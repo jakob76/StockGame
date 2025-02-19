@@ -1,16 +1,15 @@
 #include <iostream>
 #include <curl/curl.h>
 #include <nlohmann/json.hpp>
-#include <unordered_map>
-#include <vector>
-#include <ctime>
 #include <fstream>
-#include <sstream>
+#include <vector>
+#include <unordered_map>
+#include <string>
+#include <algorithm>
+#include <cctype>
 
 using json = nlohmann::json;
 using namespace std;
-
-const string API_KEY = "C82n3zDKGmaxeluAKUrfggMfK_gOlbM2"; // Replace with your API key
 
 // Callback function for cURL to store response
 size_t WriteCallback(void* contents, size_t size, size_t nmemb, string* output) {
@@ -35,73 +34,69 @@ string fetchStockData(const string& url) {
     return readBuffer;
 }
 
-// Convert Unix timestamp (milliseconds) to YYYY-MM-DD format
-string convertTimestamp(long long timestamp) {
-    time_t rawTime = timestamp / 1000; // Convert from milliseconds to seconds
-    struct tm* timeInfo = localtime(&rawTime);
-    
-    char buffer[20];
-    strftime(buffer, sizeof(buffer), "%Y-%m-%d", timeInfo);
-    return string(buffer);
-}
+// Function to fetch the latest trade price for a stock
+void getStockPrice(const string& ticker, const string& apiKey, unordered_map<string, pair<double, string>>& stockPrices) {
+    string url = "https://api.polygon.io/v2/last/trade/" + ticker + "?apiKey=" + apiKey;
+    string jsonData = fetchStockData(url);
 
-// Function to fetch stock prices and store them in a map
-unordered_map<string, pair<double, string>> fetchAllStockPrices(const vector<string>& tickers) {
-    unordered_map<string, pair<double, string>> stockData;
-    
-    for (const string& ticker : tickers) {
-        string url = "https://api.polygon.io/v2/aggs/ticker/" + ticker + "/prev?adjusted=true&apiKey=" + API_KEY;
-        string jsonData = fetchStockData(url);
-        
-        try {
-            auto data = json::parse(jsonData);
-            if (data.contains("results") && !data["results"].empty()) {
-                auto result = data["results"][0];
-                double closePrice = result["c"];
-                string date = convertTimestamp(result["t"]);
-                
-                stockData[ticker] = {closePrice, date};
-                cout << "Fetched: " << ticker << " | $" << closePrice << " | " << date << endl;
-            } else {
-                cout << "Error fetching: " << ticker << endl;
-            }
-        } catch (...) {
-            cout << "Invalid response for: " << ticker << endl;
-        }
+    // Parse JSON response
+    auto data = json::parse(jsonData);
+    if (data.contains("results")) {
+        stockPrices[ticker] = make_pair(data["results"]["p"], to_string(data["results"]["t"]));
     }
-
-    return stockData;
 }
 
-// Load S&P 500 tickers from a file
-vector<string> loadSP500Tickers(const string& filename) {
+// Function to load S&P 500 tickers from a CSV file
+vector<string> loadSP500Tickers(const string& fileName) {
     vector<string> tickers;
-    ifstream file(filename);
+    ifstream file(fileName);
     string line;
-
     while (getline(file, line)) {
-        stringstream ss(line);
-        string ticker;
-        getline(ss, ticker, ','); // Assuming CSV format
-        tickers.push_back(ticker);
+        transform(line.begin(), line.end(), line.begin(), ::toupper);  // Ensure uppercase
+        tickers.push_back(line);
     }
-
     return tickers;
 }
 
+// Function to fetch prices for all S&P 500 tickers
+unordered_map<string, pair<double, string>> fetchAllStockPrices(const vector<string>& tickers, const string& apiKey) {
+    unordered_map<string, pair<double, string>> stockPrices;
+    for (const auto& ticker : tickers) {
+        getStockPrice(ticker, apiKey, stockPrices);
+    }
+
+    // Debug: Print all stored stock prices to check if they were loaded correctly
+    cout << "\n--- Stock Prices Stored ---" << endl;
+    for (const auto& pair : stockPrices) {
+        cout << pair.first << " | " << pair.second.first << " | " << pair.second.second << endl;
+    }
+
+    return stockPrices;
+}
+
+// Function to convert input to uppercase
+string toUpper(const string& str) {
+    string result = str;
+    transform(result.begin(), result.end(), result.begin(), ::toupper);
+    return result;
+}
+
 int main() {
+    string apiKey = "YOUR_API_KEY_HERE";  // Replace with your Polygon.io API Key
+
     cout << "Loading S&P 500 tickers..." << endl;
-    vector<string> tickers = loadSP500Tickers("sp500_tickers.csv"); // Make sure this file exists
+    vector<string> tickers = loadSP500Tickers("sp500_tickers.csv");  // Ensure this file exists
 
     cout << "Fetching stock prices..." << endl;
-    unordered_map<string, pair<double, string>> stockPrices = fetchAllStockPrices(tickers);
+    unordered_map<string, pair<double, string>> stockPrices = fetchAllStockPrices(tickers, apiKey);
 
     string input;
     while (true) {
         cout << "\nEnter a stock symbol (or type 'exit' to quit): ";
         cin >> input;
+        input = toUpper(input);  // Ensure user input matches stored tickers
 
-        if (input == "exit") break;
+        if (input == "EXIT") break;
 
         if (stockPrices.find(input) != stockPrices.end()) {
             cout << "Ticker: " << input 

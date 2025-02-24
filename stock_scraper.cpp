@@ -36,15 +36,29 @@ string fetchStockData(const string& url) {
 
 // Function to fetch the latest trade price for a stock
 void getStockPrice(const string& ticker, const string& apiKey, unordered_map<string, pair<double, string>>& stockPrices) {
-    string url = "https://api.polygon.io/v2/last/trade/" + ticker + "?apiKey=" + apiKey;
+    string url = "https://api.polygon.io/v2/aggs/ticker/" + ticker + "/prev?adjusted=true&apiKey=" + apiKey;
+    
+    // Print API URL for debugging
+    cout << "Fetching: " << url << endl;
+
     string jsonData = fetchStockData(url);
 
-    // Parse JSON response
-    auto data = json::parse(jsonData);
-    if (data.contains("results")) {
-        stockPrices[ticker] = make_pair(data["results"]["p"], to_string(data["results"]["t"]));
+    try {
+        auto data = json::parse(jsonData);
+
+        if (data.contains("results") && data["results"].is_array() && !data["results"].empty()) {
+            stockPrices[ticker] = make_pair(
+                data["results"][0]["c"],  
+                to_string(data["results"][0]["t"])
+            );
+        } else {
+            cerr << "No valid results for " << ticker << endl;
+        }
+    } catch (const json::parse_error& e) {
+        cerr << "JSON Parse Error for " << ticker << ": " << e.what() << endl;
     }
 }
+
 
 // Function to load S&P 500 tickers from a CSV file
 vector<string> loadSP500Tickers(const string& fileName) {
@@ -82,7 +96,7 @@ string toUpper(const string& str) {
 }
 
 int main() {
-    string apiKey = "YOUR_API_KEY_HERE";  // Replace with your Polygon.io API Key
+    string apiKey = "E0YpvdkQc0eTtkfZQs4OdHV2ixvWXSuB";  // Replace with your Polygon.io API Key
 
     cout << "Loading S&P 500 tickers..." << endl;
     vector<string> tickers = loadSP500Tickers("sp500_tickers.csv");  // Ensure this file exists

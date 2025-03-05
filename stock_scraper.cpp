@@ -7,6 +7,8 @@
 #include <string>
 #include <algorithm>
 #include <cctype>
+#include <thread>
+#include <chrono>
 
 using json = nlohmann::json;
 using namespace std;
@@ -38,7 +40,7 @@ string fetchStockData(const string& url) {
 void getStockPrice(const string& ticker, const string& apiKey, unordered_map<string, pair<double, string>>& stockPrices) {
     string url = "https://api.polygon.io/v2/aggs/ticker/" + ticker + "/prev?adjusted=true&apiKey=" + apiKey;
     
-    // Print API URL for debugging
+    // Log API URL for debugging
     cout << "Fetching: " << url << endl;
 
     string jsonData = fetchStockData(url);
@@ -59,7 +61,6 @@ void getStockPrice(const string& ticker, const string& apiKey, unordered_map<str
     }
 }
 
-
 // Function to load S&P 500 tickers from a CSV file
 vector<string> loadSP500Tickers(const string& fileName) {
     vector<string> tickers;
@@ -76,7 +77,13 @@ vector<string> loadSP500Tickers(const string& fileName) {
 unordered_map<string, pair<double, string>> fetchAllStockPrices(const vector<string>& tickers, const string& apiKey) {
     unordered_map<string, pair<double, string>> stockPrices;
     for (const auto& ticker : tickers) {
-        getStockPrice(ticker, apiKey, stockPrices);
+        try {
+            getStockPrice(ticker, apiKey, stockPrices);
+            // Optional: Add a delay to handle rate limits
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        } catch (const std::exception& e) {
+            cerr << "Error fetching data for " << ticker << ": " << e.what() << endl;
+        }
     }
 
     // Debug: Print all stored stock prices to check if they were loaded correctly

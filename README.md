@@ -16,5 +16,5 @@ sudo apt-get install nlohmann-json3-dev
 
 // Compiler
 
-g++ -o stock_scraper stock_scraper.cpp -Iinclude -lcurl
-./stock_scraper
+g++ -std=c++17 main.cpp -o main -Iinclude -lcurl
+./main

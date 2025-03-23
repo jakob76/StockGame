@@ -5,6 +5,7 @@
 #include <map>
 #include <iomanip>
 #include <limits>
+#include <fstream>
 
 using json = nlohmann::json;
 
@@ -70,6 +71,42 @@ StockInfo getStockPrice(const std::string& ticker, const std::string& apiKey) {
     return info;
 }
 
+void savePortfolio(const std::string& fileName, const std::map<std::string, std::pair<int, double>>& portfolio, double cash) {
+    json data;
+    data["cash"] = cash;
+    for (const auto& entry : portfolio) {
+        data["portfolio"][entry.first] = {entry.second.first, entry.second.second};
+    }
+    std::ofstream file(fileName);
+    if (file) {
+        file << data.dump(4);
+        std::cout << "Portfolio saved to " << fileName << " successfully!\n";
+    } else {
+        std::cerr << "Error: Could not save portfolio.\n";
+    }
+}
+
+void loadPortfolio(std::string& fileName, std::map<std::string, std::pair<int, double>>& portfolio, double& cash) {
+    std::cout << "Enter the name of the save file to load: ";
+    std::cin >> fileName;
+    
+    std::ifstream file(fileName);
+    if (file) {
+        json data;
+        file >> data;
+        cash = data.value("cash", 5000.0);
+        for (auto& item : data["portfolio"].items()) {
+            std::string key = item.key();
+            auto value = item.value();
+            portfolio[key] = {value[0], value[1]};
+        }
+        std::cout << "Save loaded successfully from " << fileName << "!\n";
+    } else {
+        std::cerr << "Error: Save file not found. Starting a new game.\n";
+        fileName.clear(); // Reset file name for new game
+    }
+}
+
 // Clear the input buffer
 void clearInputBuffer() {
     std::cin.clear();
@@ -108,10 +145,23 @@ int main() {
     double cash = 5000.0;
     std::map<std::string, std::pair<int, double>> portfolio; // ticker -> (shares, avg_price)
     std::string ticker;
+    std::string saveFileName;
+
+    int startChoice;
+    std::cout << "\n1. Load Save\n2. Start New Game\nChoice: ";
+    std::cin >> startChoice;
+    
+    if (startChoice == 1) {
+        loadPortfolio(saveFileName, portfolio, cash);
+    } else {
+        std::cout << "Enter a name for your new save file: ";
+        std::cin >> saveFileName;
+    }
+    
     int choice = 0;
     
     std::cout << "===== STOCK MARKET INVESTMENT GAME =====\n";
-    std::cout << "You have $5000 to invest in the stock market.\n";
+    std::cout << "You have $" << cash << " to invest in the stock market.\n";
     
     while (choice != 5) {
         std::cout << "\nWhat would you like to do?\n";
@@ -250,9 +300,11 @@ int main() {
                 break;
                 
             case 5:
-                std::cout << "Thank you for playing the Stock Market Investment Game!\n";
-                displayPortfolio(portfolio, cash);
-                break;
+            std::cout << "Exiting game. Saving portfolio...\n";
+            savePortfolio(saveFileName, portfolio, cash);
+            displayPortfolio(portfolio, cash);
+            std::cout << "Goodbye!\n";
+            break;
                 
             default:
                 std::cout << "Invalid choice. Please enter a number between 1 and 5.\n";

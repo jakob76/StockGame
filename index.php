@@ -1,5 +1,12 @@
 <?php
 session_start();
+
+if (!isset($_POST['load']) && !isset($_POST['exit'])) {
+    session_unset();
+    session_destroy();
+    session_start(); // restart fresh session
+}
+
 $portfolio = $_SESSION['portfolio'] ?? [];
 $cash = $_SESSION['cash'] ?? 5000.0;
 $saveFile = $_SESSION['saveFile'] ?? '';
@@ -27,11 +34,44 @@ if (isset($_POST['load'])) {
 
 // Save and exit
 if (isset($_POST['exit'])) {
-    $filename = $saveFile ?: "portfolio_save.json";
-    $data = ['cash' => $cash, 'portfolio' => $portfolio];
-    file_put_contents($filename, json_encode($data, JSON_PRETTY_PRINT));
-    session_destroy();
-    $message = "Portfolio saved to $filename. Game exited.";
+    // Trigger a popup to ask for a save file name.
+    echo "<script>
+        var saveFileName = prompt('Enter a name for your save file:', 'portfolio_save.json');
+        if (saveFileName && saveFileName.trim() !== '') {
+            var form = document.createElement('form');
+            form.method = 'POST';
+            var input = document.createElement('input');
+            input.type = 'hidden';
+            input.name = 'save_file_name';
+            input.value = saveFileName.trim();
+            form.appendChild(input);
+            var exitInput = document.createElement('input');
+            exitInput.type = 'hidden';
+            exitInput.name = 'exit';
+            form.appendChild(exitInput);
+            document.body.appendChild(form);
+            form.submit();
+        }
+        else {
+            alert('Please enter a valid file name.');
+        }
+    </script>";
+    exit;
+}
+
+// Set the save file name
+if (isset($_POST['save_file_name'])) {
+    $filename = trim($_POST['save_file_name']);
+    if ($filename !== '') {
+        $_SESSION['saveFile'] = $saveFile = $filename;
+        $data = ['cash' => $cash, 'portfolio' => $portfolio];
+        file_put_contents($filename, json_encode($data, JSON_PRETTY_PRINT));
+        session_destroy();
+        echo "<script>alert('Portfolio saved to $filename. Game exited.'); window.location.href = window.location.pathname;</script>";
+        exit;
+    } else {
+        $message = "Please enter a valid file name.";
+    }
 }
 
 // Stock price lookup
@@ -95,58 +135,165 @@ if (isset($_POST['sell'])) {
 ?>
 
 <!DOCTYPE html>
-<html>
-<head><title>Stock Market Game</title></head>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stock Market Game</title>
+    <style>
+        body {
+            font-family: 'Arial', sans-serif;
+            background-color: #f4f4f9;
+            margin: 0;
+            padding: 0;
+            color: #333;
+        }
+        header {
+            background-color: #0052cc;
+            color: white;
+            padding: 15px;
+            text-align: center;
+        }
+        h1 {
+            margin: 0;
+        }
+        .container {
+            width: 80%;
+            margin: 30px auto;
+        }
+        .form-container {
+            background-color: #fff;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+        .form-container input, .form-container button {
+            padding: 10px;
+            margin: 5px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .form-container button {
+            background-color: #28a745;
+            color: white;
+            cursor: pointer;
+        }
+        .form-container button:hover {
+            background-color: #218838;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        th, td {
+            padding: 10px;
+            text-align: center;
+            border: 1px solid #ddd;
+        }
+        th {
+            background-color: #f1f1f1;
+        }
+        .message {
+            padding: 10px;
+            background-color: #f8d7da;
+            color: #721c24;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+        .success {
+            background-color: #d4edda;
+            color: #155724;
+        }
+    </style>
+</head>
 <body>
-<h1>Stock Market Game</h1>
 
-<?php if (!empty($message)) echo "<p><strong>$message</strong></p>"; ?>
-<?php if (isset($result) && !isset($result['error'])): ?>
-    <p>Ticker: <?= htmlspecialchars($result['ticker']) ?></p>
-    <p>Price: $<?= number_format($result['price'], 2) ?></p>
-    <p>Date: <?= htmlspecialchars($result['date']) ?></p>
-<?php elseif (isset($result['error'])): ?>
-    <p style="color:red;">Error: <?= htmlspecialchars($result['error']) ?></p>
+<header>
+    <h1>Welcome to the Stock Market Game</h1>
+    <p>Trade, manage your portfolio, and become a stock market expert!</p>
+</header>
+
+<div class="container">
+
+<?php if (!empty($message)): ?>
+    <div class="message <?= strpos($message, 'Error') === false ? 'success' : '' ?>">
+        <strong><?= $message ?></strong>
+    </div>
 <?php endif; ?>
 
-<form method="POST">
-    <label>Load Save File:</label>
-    <input type="text" name="load_file" placeholder="filename.json">
-    <button name="load">Load</button>
-</form>
+<?php if (isset($result) && !isset($result['error'])): ?>
+    <div class="message">
+        <p><strong>Ticker:</strong> <?= htmlspecialchars($result['ticker']) ?></p>
+        <p><strong>Price:</strong> $<?= number_format($result['price'], 2) ?></p>
+        <p><strong>Date:</strong> <?= htmlspecialchars($result['date']) ?></p>
+    </div>
+<?php elseif (isset($result['error'])): ?>
+    <div class="message">
+        <p style="color:red;">Error: <?= htmlspecialchars($result['error']) ?></p>
+    </div>
+<?php endif; ?>
 
-<form method="POST">
-    <label>Stock Ticker:</label>
-    <input type="text" name="ticker" required>
-    <button name="lookup">Lookup</button>
-</form>
+<div class="form-container">
+    <h2>Load Save File</h2>
+    <form method="POST">
+        <input type="text" name="load_file" placeholder="filename.json">
+        <button name="load">Load</button>
+    </form>
+</div>
 
-<form method="POST">
-    <label>Ticker:</label>
-    <input type="text" name="ticker" required>
-    <label>Shares to Buy:</label>
-    <input type="number" name="shares" required>
-    <button name="buy">Buy</button>
-</form>
+<div class="form-container">
+    <h2>Lookup Stock Price</h2>
+    <form method="POST">
+        <input type="text" name="ticker" required placeholder="Stock Ticker">
+        <button name="lookup">Lookup Price</button>
+    </form>
+</div>
 
-<form method="POST">
-    <label>Ticker:</label>
-    <input type="text" name="ticker" required>
-    <label>Shares to Sell:</label>
-    <input type="number" name="shares" required>
-    <button name="sell">Sell</button>
-</form>
+<div class="form-container">
+    <h2>Buy Stocks</h2>
+    <form method="POST">
+        <input type="text" name="ticker" required placeholder="Stock Ticker">
+        <input type="number" name="shares" required placeholder="Shares to Buy">
+        <button name="buy">Buy</button>
+    </form>
+</div>
 
-<form method="POST">
-    <button name="exit">Save and Exit</button>
-</form>
+<div class="form-container">
+    <h2>Sell Stocks</h2>
+    <form method="POST">
+        <input type="text" name="ticker" required placeholder="Stock Ticker">
+        <input type="number" name="shares" required placeholder="Shares to Sell">
+        <button name="sell">Sell</button>
+    </form>
+</div>
+
+<div class="form-container">
+    <h2>Exit and Save</h2>
+    <form method="POST">
+        <button name="exit">Save and Exit</button>
+    </form>
+</div>
 
 <h2>Your Portfolio</h2>
-<p>Cash: $<?= number_format($cash, 2) ?></p>
+<p><strong>Cash:</strong> $<?= number_format($cash, 2) ?></p>
+
+<?php
+$totalNetWorth = $cash;
+foreach ($portfolio as $ticker => $data) {
+    $shares = $data[0];
+    $info = run_backend("price", $ticker);
+    if (!isset($info['error']) && isset($info['price'])) {
+        $totalNetWorth += $shares * $info['price'];
+    }
+}
+?>
+<p><strong>Total Net Worth:</strong> $<?= number_format($totalNetWorth, 2) ?></p>
+
 <?php if (empty($portfolio)): ?>
-    <p>You don't own any stocks.</p>
+    <p>You don't own any stocks yet. Time to make some moves!</p>
 <?php else: ?>
-    <table border="1" cellpadding="5">
+    <table>
         <tr><th>Ticker</th><th>Shares</th><th>Avg. Price</th></tr>
         <?php foreach ($portfolio as $ticker => $data): ?>
             <tr>
@@ -157,5 +304,8 @@ if (isset($_POST['sell'])) {
         <?php endforeach; ?>
     </table>
 <?php endif; ?>
+
+</div>
+
 </body>
 </html>

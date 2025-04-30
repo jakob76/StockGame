@@ -18,3 +18,10 @@ sudo apt-get install nlohmann-json3-dev
 
 g++ -std=c++17 main.cpp -o main -Iinclude -lcurl
 ./main
+
+
+// Stock game backend compiler
+g++ -o stock_game_backend stock_game_backend.cpp -lcurl -I/opt/homebrew/opt/nlohmann-json/include
+
+// php localhost startup
+php -S localhost:8000

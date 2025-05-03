@@ -1,0 +1,152 @@
+CMD: ./stock_game_backend price AAPL 0
+OUTPUT: {"price":205.35,"ticker":"AAPL"}
+
+
+CMD: ./stock_game_backend price AAPL 0
+OUTPUT: {"price":205.35,"ticker":"AAPL"}
+
+
+CMD: ./stock_game_backend price AAPL 0
+OUTPUT: {"price":205.35,"ticker":"AAPL"}
+
+
+CMD: ./stock_game_backend price AAPL 0
+OUTPUT: {"price":205.35,"ticker":"AAPL"}
+
+
+CMD: ./stock_game_backend price AAPL 0
+OUTPUT: {"price":205.35,"ticker":"AAPL"}
+
+
+CMD: ./stock_game_backend price AAPL 0
+OUTPUT: {"error": "Failed to fetch price."}
+
+
+CMD: ./stock_game_backend price AAPL 0
+OUTPUT: {"error": "Failed to fetch price."}
+
+
+CMD: ./stock_game_backend price AAPL 0
+OUTPUT: {"error": "Failed to fetch price."}
+
+
+CMD: ./stock_game_backend price AAPL 0
+OUTPUT: {"price":205.35,"ticker":"AAPL"}
+
+
+CMD: ./stock_game_backend price AAPL 0
+OUTPUT: {"price":205.35,"ticker":"AAPL"}
+
+
+CMD: ./stock_game_backend price AAPL 0
+OUTPUT: {"price":205.35,"ticker":"AAPL"}
+
+
+CMD: ./stock_game_backend price AAPL 0
+OUTPUT: {"price":205.35,"ticker":"AAPL"}
+
+
+CMD: ./stock_game_backend price AAPL 0
+OUTPUT: {"price":205.35,"ticker":"AAPL"}
+
+
+CMD: ./stock_game_backend price AAPL 0
+OUTPUT: {"price":205.35,"ticker":"AAPL"}
+
+
+CMD: ./stock_game_backend price AAPL 0
+OUTPUT: {"price":205.35,"ticker":"AAPL"}
+
+
+CMD: ./stock_game_backend price AAPL 0
+OUTPUT: {"price":205.35,"ticker":"AAPL"}
+
+
+CMD: ./stock_game_backend price AAPL 0
+OUTPUT: {"price":205.35,"ticker":"AAPL"}
+
+
+CMD: ./stock_game_backend price AAPL 0
+OUTPUT: {"price":205.35,"ticker":"AAPL"}
+
+
+CMD: ./stock_game_backend price AAPL 0
+OUTPUT: {"price":205.35,"ticker":"AAPL"}
+
+
+CMD: ./stock_game_backend price AAPL 0
+OUTPUT: {"price":205.35,"ticker":"AAPL"}
+
+
+CMD: ./stock_game_backend price AAPL 0
+OUTPUT: {"price":205.35,"ticker":"AAPL"}
+
+
+CMD: ./stock_game_backend price AAPL 0
+OUTPUT: {"error": "Failed to fetch price."}
+
+
+CMD: ./stock_game_backend price AAPL 0
+OUTPUT: {"error": "Failed to fetch price."}
+
+
+CMD: ./stock_game_backend price AAPL 0
+OUTPUT: {"error": "Failed to fetch price."}
+
+
+CMD: ./stock_game_backend price AAPL 0
+OUTPUT: {"price":205.35,"ticker":"AAPL"}
+
+
+CMD: ./stock_game_backend price AAPL 0
+OUTPUT: {"price":205.35,"ticker":"AAPL"}
+
+
+CMD: ./stock_game_backend price AAPL 0
+OUTPUT: {"price":205.35,"ticker":"AAPL"}
+
+
+CMD: ./stock_game_backend price AAPL 0
+OUTPUT: {"price":205.35,"ticker":"AAPL"}
+
+
+CMD: ./stock_game_backend price AAPL 0
+OUTPUT: {"price":205.35,"ticker":"AAPL"}
+
+
+CMD: ./stock_game_backend price GOOG 0
+OUTPUT: {"price":165.81,"ticker":"GOOG"}
+
+
+CMD: ./stock_game_backend price AAPL 0
+OUTPUT: {"price":205.35,"ticker":"AAPL"}
+
+
+CMD: ./stock_game_backend price GOOG 0
+OUTPUT: {"price":165.81,"ticker":"GOOG"}
+
+
+CMD: ./stock_game_backend price AAPL 0
+OUTPUT: {"price":205.35,"ticker":"AAPL"}
+
+
+CMD: ./stock_game_backend price GOOG 0
+OUTPUT: {"price":165.81,"ticker":"GOOG"}
+
+
+CMD: ./stock_game_backend price AAPL 0
+OUTPUT: {"price":205.35,"ticker":"AAPL"}
+
+
+CMD: ./stock_game_backend price AAPL 0
+OUTPUT: {"price":205.35,"ticker":"AAPL"}
+
+
+CMD: ./stock_game_backend price AAPL 0
+OUTPUT: {"price":205.35,"ticker":"AAPL"}
+
+
+CMD: ./stock_game_backend price GOOG 0
+OUTPUT: {"price":165.81,"ticker":"GOOG"}
+
+

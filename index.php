@@ -13,11 +13,53 @@ $portfolio = $_SESSION['portfolio'] ?? [];
 $cash = $_SESSION['cash'] ?? 5000.0;
 $saveFile = $_SESSION['saveFile'] ?? '';
 
+// Function to execute backend commands and return data
 function run_backend($action, $ticker = '', $shares = 0) {
+    // First check if the stock price is cached
     $ticker = strtoupper(trim($ticker));
+    if (isset($_SESSION['cached_prices'][$ticker])) {
+        // Return cached data if available
+        return $_SESSION['cached_prices'][$ticker];
+    }
+
+    // If not cached, fetch from the backend API
     $cmd = escapeshellcmd("./stock_game_backend $action $ticker $shares");
     $output = shell_exec($cmd);
-    return !empty($output) ? json_decode($output, true) : ["error" => "No output from backend."];
+    
+    // Debugging output to see the result from the backend
+    if (empty($output)) {
+        return ["error" => "No output from backend."];
+    }
+
+    // Log the raw output for debugging
+    file_put_contents("backend_debug_log.txt", "CMD: $cmd\nOUTPUT: $output\n\n", FILE_APPEND);
+    
+    // Decode and store the data in session cache
+    $data = json_decode($output, true);
+    if (isset($data['price'])) {
+        $_SESSION['cached_prices'][$ticker] = $data;
+    }
+    
+    return $data ?: ["error" => "Failed to decode JSON output."];
+}
+
+// Function to update total value of stocks in portfolio
+function update_total_value($ticker, $shares, $avgPrice) {
+    // Check if the stock data is cached
+    if (isset($_SESSION['cached_prices'][$ticker])) {
+        $currentPrice = $_SESSION['cached_prices'][$ticker]['price'];
+        $totalValue = $shares * $currentPrice;
+        return [$shares, $avgPrice, $totalValue];
+    }
+
+    // If not cached, fetch the price from backend
+    $info = run_backend("price", $ticker);
+    if (!isset($info['error']) && $info['price'] > 0) {
+        $currentPrice = $info['price'];
+        $totalValue = $shares * $currentPrice;
+        return [$shares, $avgPrice, $totalValue];
+    }
+    return [$shares, $avgPrice, 0]; // If price fetching fails, set total value to 0
 }
 
 // Load save file
@@ -36,7 +78,6 @@ if (isset($_POST['load'])) {
 
 if (isset($_POST['exit'])) {
     $filename = trim($_POST['save_file_name'] ?? '');
-
     if ($filename === '') {
         $filename = $saveFile !== '' ? $saveFile : 'portfolio_save.json';
     }
@@ -52,8 +93,6 @@ if (isset($_POST['exit'])) {
 // Set the save file name
 if (isset($_POST['save_file_name'])) {
     $filename = trim($_POST['save_file_name']);
-
-    // Use loaded filename if input is blank
     if ($filename === '' && isset($_SESSION['saveFile'])) {
         $filename = $_SESSION['saveFile'];
     }
@@ -69,6 +108,7 @@ if (isset($_POST['save_file_name'])) {
         $message = "Please enter a valid file name.";
     }
 }
+
 // Stock price lookup
 if (isset($_POST['lookup'])) {
     $ticker = $_POST['ticker'];
@@ -89,9 +129,11 @@ if (isset($_POST['buy'])) {
                 $oldAvg = $portfolio[$ticker][1];
                 $newShares = $oldShares + $shares;
                 $newAvg = (($oldShares * $oldAvg) + $cost) / $newShares;
-                $portfolio[$ticker] = [$newShares, $newAvg];
+                list($newShares, $newAvg, $totalValue) = update_total_value($ticker, $newShares, $newAvg);
+                $portfolio[$ticker] = [$newShares, $newAvg, $totalValue];
             } else {
-                $portfolio[$ticker] = [$shares, $info['price']];
+                list($shares, $avgPrice, $totalValue) = update_total_value($ticker, $shares, $info['price']);
+                $portfolio[$ticker] = [$shares, $avgPrice, $totalValue];
             }
             $_SESSION['cash'] = $cash;
             $_SESSION['portfolio'] = $portfolio;
@@ -119,6 +161,13 @@ if (isset($_POST['sell'])) {
             $cash += $revenue;
             $portfolio[$ticker][0] -= $shares;
             if ($portfolio[$ticker][0] === 0) unset($portfolio[$ticker]);
+            
+            // Recalculate total value after selling the shares
+            if (isset($portfolio[$ticker])) {
+                list($remainingShares, $avgPrice, $totalValue) = update_total_value($ticker, $portfolio[$ticker][0], $portfolio[$ticker][1]);
+                $portfolio[$ticker] = [$remainingShares, $avgPrice, $totalValue];
+            }
+            
             $_SESSION['cash'] = $cash;
             $_SESSION['portfolio'] = $portfolio;
             $message = "Sold $shares shares of $ticker.";
@@ -127,6 +176,14 @@ if (isset($_POST['sell'])) {
         }
     }
 }
+
+// Calculate total net worth
+$totalStockValue = 0;
+foreach ($portfolio as $ticker => $data) {
+    $totalStockValue += $data[2]; // Add the total value of each stock
+}
+$totalNetWorth = $cash + $totalStockValue;
+
 ?>
 
 <!DOCTYPE html>
@@ -221,113 +278,67 @@ if (isset($_POST['sell'])) {
     <div class="message">
         <p><strong>Ticker:</strong> <?= htmlspecialchars($result['ticker']) ?></p>
         <p><strong>Price:</strong> $<?= number_format($result['price'], 2) ?></p>
-        <p><strong>Date:</strong> <?= htmlspecialchars($result['date']) ?></p>
-    </div>
-<?php elseif (isset($result['error'])): ?>
-    <div class="message">
-        <p style="color:red;">Error: <?= htmlspecialchars($result['error']) ?></p>
     </div>
 <?php endif; ?>
 
+<!-- Portfolio -->
 <div class="form-container">
-    <h2>Load Save File</h2>
-    <form method="POST">
-        <input type="text" name="load_file" placeholder="filename.json">
-        <button name="load">Load</button>
+    <h3>Your Portfolio</h3>
+    <table>
+        <thead>
+            <tr>
+                <th>Ticker</th>
+                <th>Shares</th>
+                <th>Avg Price</th>
+                <th>Total Value</th>
+            </tr>
+        </thead>
+        <tbody>
+            <?php foreach ($portfolio as $ticker => $data): ?>
+                <tr>
+                    <td><?= htmlspecialchars($ticker) ?></td>
+                    <td><?= $data[0] ?></td>
+                    <td>$<?= number_format($data[1], 2) ?></td>
+                    <td>$<?= number_format($data[2], 2) ?></td>
+                </tr>
+            <?php endforeach; ?>
+        </tbody>
+    </table>
+    <p><strong>Cash:</strong> $<?= number_format($cash, 2) ?></p>
+    <p><strong>Net Worth:</strong> $<?= number_format($totalNetWorth, 2) ?></p>
+</div>
+
+<!-- Stock Lookup -->
+<div class="form-container">
+    <h3>Lookup Stock Price</h3>
+    <form action="" method="POST">
+        <input type="text" name="ticker" placeholder="Stock Ticker" required>
+        <button type="submit" name="lookup">Check Price</button>
     </form>
 </div>
 
+<!-- Buy/Sell Stock Form -->
 <div class="form-container">
-    <h2>Lookup Stock Price</h2>
-    <form method="POST">
-        <input type="text" name="ticker" required placeholder="Stock Ticker">
-        <button name="lookup">Lookup Price</button>
+    <h3>Buy/Sell Stocks</h3>
+    <form action="" method="POST">
+        <input type="text" name="ticker" placeholder="Stock Ticker" required>
+        <input type="number" name="shares" placeholder="Shares" required>
+        <button type="submit" name="buy">Buy</button>
+        <button type="submit" name="sell">Sell</button>
     </form>
 </div>
 
+
+<!-- Save/Load Portfolio -->
 <div class="form-container">
-    <h2>Buy Stocks</h2>
-    <form method="POST">
-        <input type="text" name="ticker" required placeholder="Stock Ticker">
-        <input type="number" name="shares" required placeholder="Shares to Buy">
-        <button name="buy">Buy</button>
+    <h3>Save/Load Portfolio</h3>
+    <form action="" method="POST">
+        <input type="text" name="load_file" placeholder="Save File to Load" required>
+        <button type="submit" name="load">Load Portfolio</button>
     </form>
-</div>
-
-<div class="form-container">
-    <h2>Sell Stocks</h2>
-    <form method="POST">
-        <input type="text" name="ticker" required placeholder="Stock Ticker">
-        <input type="number" name="shares" required placeholder="Shares to Sell">
-        <button name="sell">Sell</button>
-    </form>
-</div>
-
-<h2>Your Portfolio</h2>
-<p><strong>Cash:</strong> $<?= number_format($cash, 2) ?></p>
-
-<?php
-$totalNetWorth = $cash;
-$portfolio = $_SESSION['portfolio'] ?? [];
-
-foreach ($portfolio as $ticker => $data) {
-    if (!isset($data[0]) || $data[0] <= 0) {
-        continue; // skip stocks with no shares
-    }
-
-    $info = run_backend("price", $ticker);
-
-    if (isset($info['price']) && $info['price'] > 0) {
-        $currentPrice = $info['price'];
-        $totalValue = $data[0] * $currentPrice;
-        $totalNetWorth += $totalValue;
-    } else {
-        echo "<p>Error: Couldn't fetch price for " . htmlspecialchars($ticker) . ".</p>";
-    }
-}
-
-
-?>
-<p><strong>Total Net Worth:</strong> $<?= number_format($totalNetWorth, 2) ?></p>
-
-<?php if (empty($portfolio)): ?>
-    <p>You don't own any stocks yet. Time to make some moves!</p>
-<?php else: ?>
-<table>
-    <tr>
-        <th>Ticker</th>
-        <th>Shares</th>
-        <th>Avg. Price</th>
-        <th>Total Value (Current)</th>
-    </tr>
-    <?php foreach ($portfolio as $ticker => $data): ?>
-        <?php
-            if ($data[0] <= 0) continue;  // Skip if no shares
-            $shares = $data[0];
-            $avgPrice = $data[1];
-            $info = run_backend("price", $ticker);
-            $currentPrice = isset($info['price']) ? $info['price'] : 0;
-            $totalValue = $shares * $currentPrice;
-        ?>
-        <tr>
-            <td><?= htmlspecialchars($ticker) ?></td>
-            <td><?= $shares ?></td>
-            <td>$<?= number_format($avgPrice, 2) ?></td>
-            <td>$<?= number_format($totalValue, 2) ?></td>
-        </tr>
-    <?php endforeach; ?>
-</table>
-<?php endif; ?>
-
-
-<div class="form-container" style="max-width: 400px; margin-top: 20px;">
-    <h2 style="font-size: 1.2em;">Save and Exit</h2>
-    <form method="POST">
-        <input type="text" name="save_file_name" id="save_file_name"
-            placeholder="portfolio_save.json"
-            value="<?= htmlspecialchars($saveFile ?: '') ?>"
-            style="width: 94%; margin-bottom: 10px;">
-        <button name="exit" style="width: 100%;">Save and Exit</button>
+    <form action="" method="POST">
+        <input type="text" name="save_file_name" placeholder="Save File Name" required>
+        <button type="submit" name="exit">Exit and Save</button>
     </form>
 </div>
 

@@ -34,56 +34,75 @@ std::string convertTimestamp(long long timestamp) {
     return std::string(buffer);
 }
 
+double getStockPrice(const std::string& ticker, const std::string& apiKey) {
+    std::string url = "https://api.polygon.io/v2/aggs/ticker/" + ticker + "/prev?adjusted=true&apiKey=" + apiKey;
+    std::string data = fetchStockData(url);
+    try {
+        auto jsonData = json::parse(data);
+        if (jsonData.contains("results") && !jsonData["results"].empty()) {
+            return jsonData["results"][0]["c"];
+        }
+    } catch (...) {
+        std::cerr << "Error fetching price for ticker: " << ticker << std::endl;
+    }
+    return 0.0;
+}
+
 int main(int argc, char* argv[]) {
     std::string apiKey = "C82n3zDKGmaxeluAKUrfggMfK_gOlbM2";
-    if (argc < 3) {
-        std::cerr << R"({"error": "Usage: stock_backend <action> <ticker> [shares] [savefile]"})" << std::endl;
+    if (argc < 2) {
+        std::cerr << R"({"error": "Usage: stock_backend <action> <args>"})" << std::endl;
         return 1;
     }
-    std::string action = argv[1];
-    std::string ticker = argv[2];
-    int shares = argc > 3 ? std::stoi(argv[3]) : 0;
-    std::string saveFile = argc > 4 ? argv[4] : "portfolio_save.json";
     
+    std::string action = argv[1];
+
+    // Price lookup
     if (action == "price") {
-        std::string url = "https://api.polygon.io/v2/aggs/ticker/" + ticker + "/prev?adjusted=true&apiKey=" + apiKey;
-        std::string data = fetchStockData(url);
-        try {
-            auto jsonData = json::parse(data);
-            if (jsonData.contains("results") && !jsonData["results"].empty()) {
-                auto result = jsonData["results"][0];
-                double price = result["c"];
-                std::string date = convertTimestamp(result["t"]);
-                json response = {{"ticker", ticker}, {"price", price}, {"date", date}};
-                std::cout << response.dump();
-                return 0;
-            }
-        } catch (...) {
-            std::cout << R"({"error": "Invalid response from API"})";
+        if (argc < 3) {
+            std::cerr << R"({"error": "Please provide a ticker."})" << std::endl;
+            return 1;
+        }
+        std::string ticker = argv[2];
+        double price = getStockPrice(ticker, apiKey);
+        if (price > 0) {
+            json response = {{"ticker", ticker}, {"price", price}};
+            std::cout << response.dump() << std::endl;
+            return 0;
+        } else {
+            std::cout << R"({"error": "Failed to fetch price."})" << std::endl;
             return 1;
         }
     }
-    else if (action == "load") {
-        std::ifstream file(saveFile);
-        if (file) {
-            json data;
-            file >> data;
-            std::cout << data.dump();
-        } else {
-            std::cout << R"({"error": "Save file not found"})";
+
+    // Portfolio value calculation
+    else if (action == "portfolio") {
+        if (argc < 3) {
+            std::cerr << R"({"error": "Please provide a portfolio."})" << std::endl;
+            return 1;
         }
-    }
-    else if (action == "save") {
-        std::ofstream file(saveFile);
-        if (file) {
-            json data;
-            std::cin >> data;
-            file << data.dump(4);
-            std::cout << R"({"status": "Save successful"})";
-        } else {
-            std::cout << R"({"error": "Could not open file to save"})";
+        // Parse portfolio (it's passed as JSON in the argument)
+        std::string portfolioJson = argv[2];
+        json portfolio = json::parse(portfolioJson);
+        
+        double totalValue = 0.0;
+
+        // Iterate through the portfolio and calculate total value
+        for (auto& item : portfolio.items()) {
+            std::string ticker = item.key();
+            int shares = item.value()[0];  // Assumes format { ticker: [shares, avg_price] }
+            double stockPrice = getStockPrice(ticker, apiKey);
+            if (stockPrice > 0) {
+                totalValue += stockPrice * shares;
+            }
         }
+
+        // Return total value of the portfolio
+        json response = {{"total_value", totalValue}};
+        std::cout << response.dump() << std::endl;
+        return 0;
     }
-    
-    return 0;
+
+    std::cerr << R"({"error": "Unknown action."})" << std::endl;
+    return 1;
 }

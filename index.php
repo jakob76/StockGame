@@ -1,7 +1,9 @@
 <?php
 session_start();
 
-if (!isset($_POST['load']) && !isset($_POST['exit'])) {
+if (!isset($_POST['load']) && !isset($_POST['exit']) && 
+    !isset($_POST['lookup']) && !isset($_POST['buy']) && !isset($_POST['sell']) && 
+    !isset($_POST['save_file_name'])) {
     session_unset();
     session_destroy();
     session_start(); // restart fresh session
@@ -32,36 +34,30 @@ if (isset($_POST['load'])) {
     }
 }
 
-// Save and exit
 if (isset($_POST['exit'])) {
-    // Trigger a popup to ask for a save file name.
-    echo "<script>
-        var saveFileName = prompt('Enter a name for your save file:', 'portfolio_save.json');
-        if (saveFileName && saveFileName.trim() !== '') {
-            var form = document.createElement('form');
-            form.method = 'POST';
-            var input = document.createElement('input');
-            input.type = 'hidden';
-            input.name = 'save_file_name';
-            input.value = saveFileName.trim();
-            form.appendChild(input);
-            var exitInput = document.createElement('input');
-            exitInput.type = 'hidden';
-            exitInput.name = 'exit';
-            form.appendChild(exitInput);
-            document.body.appendChild(form);
-            form.submit();
-        }
-        else {
-            alert('Please enter a valid file name.');
-        }
-    </script>";
+    $filename = trim($_POST['save_file_name'] ?? '');
+
+    if ($filename === '') {
+        $filename = $saveFile !== '' ? $saveFile : 'portfolio_save.json';
+    }
+
+    $_SESSION['saveFile'] = $saveFile = $filename;
+    $data = ['cash' => $cash, 'portfolio' => $portfolio];
+    file_put_contents($filename, json_encode($data, JSON_PRETTY_PRINT));
+    session_destroy();
+    echo "<script>alert('Portfolio saved to $filename. Game exited.'); window.location.href = window.location.pathname;</script>";
     exit;
 }
 
 // Set the save file name
 if (isset($_POST['save_file_name'])) {
     $filename = trim($_POST['save_file_name']);
+
+    // Use loaded filename if input is blank
+    if ($filename === '' && isset($_SESSION['saveFile'])) {
+        $filename = $_SESSION['saveFile'];
+    }
+
     if ($filename !== '') {
         $_SESSION['saveFile'] = $saveFile = $filename;
         $data = ['cash' => $cash, 'portfolio' => $portfolio];
@@ -73,7 +69,6 @@ if (isset($_POST['save_file_name'])) {
         $message = "Please enter a valid file name.";
     }
 }
-
 // Stock price lookup
 if (isset($_POST['lookup'])) {
     $ticker = $_POST['ticker'];
@@ -268,42 +263,73 @@ if (isset($_POST['sell'])) {
     </form>
 </div>
 
-<div class="form-container">
-    <h2>Exit and Save</h2>
-    <form method="POST">
-        <button name="exit">Save and Exit</button>
-    </form>
-</div>
-
 <h2>Your Portfolio</h2>
 <p><strong>Cash:</strong> $<?= number_format($cash, 2) ?></p>
 
 <?php
 $totalNetWorth = $cash;
+$portfolio = $_SESSION['portfolio'] ?? [];
+
 foreach ($portfolio as $ticker => $data) {
-    $shares = $data[0];
+    if (!isset($data[0]) || $data[0] <= 0) {
+        continue; // skip stocks with no shares
+    }
+
     $info = run_backend("price", $ticker);
-    if (!isset($info['error']) && isset($info['price'])) {
-        $totalNetWorth += $shares * $info['price'];
+
+    if (isset($info['price']) && $info['price'] > 0) {
+        $currentPrice = $info['price'];
+        $totalValue = $data[0] * $currentPrice;
+        $totalNetWorth += $totalValue;
+    } else {
+        echo "<p>Error: Couldn't fetch price for " . htmlspecialchars($ticker) . ".</p>";
     }
 }
+
+
 ?>
 <p><strong>Total Net Worth:</strong> $<?= number_format($totalNetWorth, 2) ?></p>
 
 <?php if (empty($portfolio)): ?>
     <p>You don't own any stocks yet. Time to make some moves!</p>
 <?php else: ?>
-    <table>
-        <tr><th>Ticker</th><th>Shares</th><th>Avg. Price</th></tr>
-        <?php foreach ($portfolio as $ticker => $data): ?>
-            <tr>
-                <td><?= htmlspecialchars($ticker) ?></td>
-                <td><?= $data[0] ?></td>
-                <td>$<?= number_format($data[1], 2) ?></td>
-            </tr>
-        <?php endforeach; ?>
-    </table>
+<table>
+    <tr>
+        <th>Ticker</th>
+        <th>Shares</th>
+        <th>Avg. Price</th>
+        <th>Total Value (Current)</th>
+    </tr>
+    <?php foreach ($portfolio as $ticker => $data): ?>
+        <?php
+            if ($data[0] <= 0) continue;  // Skip if no shares
+            $shares = $data[0];
+            $avgPrice = $data[1];
+            $info = run_backend("price", $ticker);
+            $currentPrice = isset($info['price']) ? $info['price'] : 0;
+            $totalValue = $shares * $currentPrice;
+        ?>
+        <tr>
+            <td><?= htmlspecialchars($ticker) ?></td>
+            <td><?= $shares ?></td>
+            <td>$<?= number_format($avgPrice, 2) ?></td>
+            <td>$<?= number_format($totalValue, 2) ?></td>
+        </tr>
+    <?php endforeach; ?>
+</table>
 <?php endif; ?>
+
+
+<div class="form-container" style="max-width: 400px; margin-top: 20px;">
+    <h2 style="font-size: 1.2em;">Save and Exit</h2>
+    <form method="POST">
+        <input type="text" name="save_file_name" id="save_file_name"
+            placeholder="portfolio_save.json"
+            value="<?= htmlspecialchars($saveFile ?: '') ?>"
+            style="width: 94%; margin-bottom: 10px;">
+        <button name="exit" style="width: 100%;">Save and Exit</button>
+    </form>
+</div>
 
 </div>
 

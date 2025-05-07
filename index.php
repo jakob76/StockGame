@@ -6,71 +6,63 @@ if (!isset($_POST['load']) && !isset($_POST['exit']) &&
     !isset($_POST['save_file_name'])) {
     session_unset();
     session_destroy();
-    session_start(); // restart fresh session
+    session_start();
 }
 
 $portfolio = $_SESSION['portfolio'] ?? [];
 $cash = $_SESSION['cash'] ?? 5000.0;
 $saveFile = $_SESSION['saveFile'] ?? '';
 
-// Function to execute backend commands and return data
 function run_backend($action, $ticker = '', $shares = 0) {
-    // First check if the stock price is cached
     $ticker = strtoupper(trim($ticker));
     if (isset($_SESSION['cached_prices'][$ticker])) {
-        // Return cached data if available
         return $_SESSION['cached_prices'][$ticker];
     }
-
-    // If not cached, fetch from the backend API
     $cmd = escapeshellcmd("./stock_game_backend $action $ticker $shares");
     $output = shell_exec($cmd);
-    
-    // Debugging output to see the result from the backend
     if (empty($output)) {
         return ["error" => "No output from backend."];
     }
-
-    // Log the raw output for debugging
     file_put_contents("backend_debug_log.txt", "CMD: $cmd\nOUTPUT: $output\n\n", FILE_APPEND);
-    
-    // Decode and store the data in session cache
     $data = json_decode($output, true);
     if (isset($data['price'])) {
         $_SESSION['cached_prices'][$ticker] = $data;
     }
-    
     return $data ?: ["error" => "Failed to decode JSON output."];
 }
 
-// Function to update total value of stocks in portfolio
-function update_total_value($ticker, $shares, $avgPrice) {
-    // Check if the stock data is cached
-    if (isset($_SESSION['cached_prices'][$ticker])) {
-        $currentPrice = $_SESSION['cached_prices'][$ticker]['price'];
-        $totalValue = $shares * $currentPrice;
-        return [$shares, $avgPrice, $totalValue];
-    }
-
-    // If not cached, fetch the price from backend
+function update_total_value($ticker, $shares, $prevPrice) {
     $info = run_backend("price", $ticker);
     if (!isset($info['error']) && $info['price'] > 0) {
         $currentPrice = $info['price'];
         $totalValue = $shares * $currentPrice;
-        return [$shares, $avgPrice, $totalValue];
+        return [$shares, $prevPrice, $currentPrice, $totalValue];
     }
-    return [$shares, $avgPrice, 0]; // If price fetching fails, set total value to 0
+    return [$shares, $prevPrice, 0, 0];
 }
 
-// Load save file
 if (isset($_POST['load'])) {
     $filename = $_POST['load_file'];
     if (file_exists($filename)) {
         $data = json_decode(file_get_contents($filename), true);
         $_SESSION['cash'] = $cash = $data['cash'];
-        $_SESSION['portfolio'] = $portfolio = $data['portfolio'];
+        $_SESSION['portfolio'] = $data['portfolio'];
         $_SESSION['saveFile'] = $saveFile = $filename;
-        $message = "Loaded from $filename";
+
+        foreach ($_SESSION['portfolio'] as $ticker => $stockData) {
+            list($shares, $prevPrice) = $stockData;
+            $info = run_backend("price", $ticker);
+            if (!isset($info['error']) && $info['price'] > 0) {
+                $currentPrice = $info['price'];
+                $totalValue = $shares * $currentPrice;
+                $_SESSION['portfolio'][$ticker] = [$shares, $prevPrice, $currentPrice, $totalValue];
+            } else {
+                $_SESSION['portfolio'][$ticker] = [$shares, $prevPrice, 0, 0];
+            }
+        }
+
+        $portfolio = $_SESSION['portfolio'];
+        $message = "Loaded and updated portfolio from $filename.";
     } else {
         $message = "Save file not found.";
     }
@@ -81,7 +73,6 @@ if (isset($_POST['exit'])) {
     if ($filename === '') {
         $filename = $saveFile !== '' ? $saveFile : 'portfolio_save.json';
     }
-
     $_SESSION['saveFile'] = $saveFile = $filename;
     $data = ['cash' => $cash, 'portfolio' => $portfolio];
     file_put_contents($filename, json_encode($data, JSON_PRETTY_PRINT));
@@ -90,13 +81,11 @@ if (isset($_POST['exit'])) {
     exit;
 }
 
-// Set the save file name
 if (isset($_POST['save_file_name'])) {
     $filename = trim($_POST['save_file_name']);
     if ($filename === '' && isset($_SESSION['saveFile'])) {
         $filename = $_SESSION['saveFile'];
     }
-
     if ($filename !== '') {
         $_SESSION['saveFile'] = $saveFile = $filename;
         $data = ['cash' => $cash, 'portfolio' => $portfolio];
@@ -109,13 +98,11 @@ if (isset($_POST['save_file_name'])) {
     }
 }
 
-// Stock price lookup
 if (isset($_POST['lookup'])) {
     $ticker = $_POST['ticker'];
     $result = run_backend("price", $ticker);
 }
 
-// Buy stocks
 if (isset($_POST['buy'])) {
     $ticker = $_POST['ticker'];
     $shares = intval($_POST['shares']);
@@ -126,14 +113,14 @@ if (isset($_POST['buy'])) {
             $cash -= $cost;
             if (isset($portfolio[$ticker])) {
                 $oldShares = $portfolio[$ticker][0];
-                $oldAvg = $portfolio[$ticker][1];
+                $prevPrice = $portfolio[$ticker][1];
                 $newShares = $oldShares + $shares;
-                $newAvg = (($oldShares * $oldAvg) + $cost) / $newShares;
-                list($newShares, $newAvg, $totalValue) = update_total_value($ticker, $newShares, $newAvg);
-                $portfolio[$ticker] = [$newShares, $newAvg, $totalValue];
+                $newPrev = (($oldShares * $prevPrice) + $cost) / $newShares;
+                list($newShares, $newPrev, $currPrice, $totalValue) = update_total_value($ticker, $newShares, $newPrev);
+                $portfolio[$ticker] = [$newShares, $newPrev, $currPrice, $totalValue];
             } else {
-                list($shares, $avgPrice, $totalValue) = update_total_value($ticker, $shares, $info['price']);
-                $portfolio[$ticker] = [$shares, $avgPrice, $totalValue];
+                list($shares, $newPrev, $currPrice, $totalValue) = update_total_value($ticker, $shares, $info['price']);
+                $portfolio[$ticker] = [$shares, $newPrev, $currPrice, $totalValue];
             }
             $_SESSION['cash'] = $cash;
             $_SESSION['portfolio'] = $portfolio;
@@ -146,7 +133,6 @@ if (isset($_POST['buy'])) {
     }
 }
 
-// Sell stocks
 if (isset($_POST['sell'])) {
     $ticker = $_POST['ticker'];
     $shares = intval($_POST['shares']);
@@ -161,13 +147,10 @@ if (isset($_POST['sell'])) {
             $cash += $revenue;
             $portfolio[$ticker][0] -= $shares;
             if ($portfolio[$ticker][0] === 0) unset($portfolio[$ticker]);
-            
-            // Recalculate total value after selling the shares
             if (isset($portfolio[$ticker])) {
-                list($remainingShares, $avgPrice, $totalValue) = update_total_value($ticker, $portfolio[$ticker][0], $portfolio[$ticker][1]);
-                $portfolio[$ticker] = [$remainingShares, $avgPrice, $totalValue];
+                list($remainingShares, $prevPrice, $currPrice, $totalValue) = update_total_value($ticker, $portfolio[$ticker][0], $portfolio[$ticker][1]);
+                $portfolio[$ticker] = [$remainingShares, $prevPrice, $currPrice, $totalValue];
             }
-            
             $_SESSION['cash'] = $cash;
             $_SESSION['portfolio'] = $portfolio;
             $message = "Sold $shares shares of $ticker.";
@@ -177,20 +160,17 @@ if (isset($_POST['sell'])) {
     }
 }
 
-// Calculate total net worth
 $totalStockValue = 0;
 foreach ($portfolio as $ticker => $data) {
-    $totalStockValue += $data[2]; // Add the total value of each stock
+    $totalStockValue += $data[3];
 }
 $totalNetWorth = $cash + $totalStockValue;
-
 ?>
 
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Stock Market Game</title>
     <style>
         body {
@@ -205,9 +185,6 @@ $totalNetWorth = $cash + $totalStockValue;
             color: white;
             padding: 15px;
             text-align: center;
-        }
-        h1 {
-            margin: 0;
         }
         .container {
             width: 80%;
@@ -289,17 +266,25 @@ $totalNetWorth = $cash + $totalStockValue;
             <tr>
                 <th>Ticker</th>
                 <th>Shares</th>
-                <th>Avg Price</th>
+                <th>Previous Price</th>
+                <th>Current Price</th>
                 <th>Total Value</th>
+                <th>Gain/Loss</th>
             </tr>
         </thead>
         <tbody>
             <?php foreach ($portfolio as $ticker => $data): ?>
+                <?php 
+                    $gainLoss = ($data[2] - $data[1]) * $data[0]; 
+                    $gainLossClass = $gainLoss >= 0 ? 'style="color:green"' : 'style="color:red"';
+                ?>
                 <tr>
                     <td><?= htmlspecialchars($ticker) ?></td>
                     <td><?= $data[0] ?></td>
                     <td>$<?= number_format($data[1], 2) ?></td>
                     <td>$<?= number_format($data[2], 2) ?></td>
+                    <td>$<?= number_format($data[3], 2) ?></td>
+                    <td <?= $gainLossClass ?>>$<?= number_format($gainLoss, 2) ?></td>
                 </tr>
             <?php endforeach; ?>
         </tbody>
@@ -327,7 +312,6 @@ $totalNetWorth = $cash + $totalStockValue;
         <button type="submit" name="sell">Sell</button>
     </form>
 </div>
-
 
 <!-- Save/Load Portfolio -->
 <div class="form-container">
